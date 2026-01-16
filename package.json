@@ -1,0 +1,35 @@
+{
+  "name": "data-entry-desktop",
+  "version": "1.0.0",
+  "description": "Electron wrapper for the Data Entry app",
+  "author": "Nazir",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/data-entry.git"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.example.dataentry",
+    "productName": "Data Entry",
+    "directories": {
+      "output": "dist_tmp",
+      "buildResources": "assets"
+    },
+    "icon": "assets/icon.ico",
+    "win": {
+      "icon": "assets/icon.ico"
+    },
+    "files": [
+      "**/*"
+    ]
+  }
+}
