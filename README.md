@@ -28,6 +28,6 @@ Notes:
 
 Repository:
 
-- GitHub: https://github.com/your-username/data-entry (replace with your repository URL)
+- GitHub: https://nazircamara.github.io/Data-Entry/
 
 If you host this project on GitHub, set the correct URL above and other collaborators can clone and build the installer using the commands above.
