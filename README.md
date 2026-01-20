@@ -26,6 +26,26 @@ Notes:
 - A placeholder icon is included at `assets/icon.png` as a data-URL. Replace it with a proper PNG/ICO for better results.
 - For Windows installers, electron-builder prefers an `.ico` file. Put your `icon.ico` into `assets/` and update `build.win.icon` in `package.json` before running `npm run dist`.
 
+Continuous Integration
+----------------------
+
+This repository includes a GitHub Actions workflow that builds a Windows installer on pushes to `main` and uploads the `dist_tmp` artifacts.
+
+Badge (build status):
+
+![Build](https://github.com/nazircamara/Data-Entry/actions/workflows/build.yml/badge.svg)
+
+Releases
+--------
+
+- After a successful build you can download the installer artifact from the Actions run, or upload the installer to a GitHub Release for distribution.
+
+Security / Large files
+----------------------
+
+- The repository `.gitignore` excludes `node_modules/` and `dist_tmp/` to avoid committing large files. Build artifacts are produced by CI or locally using `npm run dist`.
+
+
 Repository:
 
 - GitHub: https://nazircamara.github.io/Data-Entry/

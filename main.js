@@ -2,6 +2,12 @@ const { app, BrowserWindow, nativeImage, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Disable Electron security warnings during development to reduce console noise.
+// IMPORTANT: keep this disabled in production — use only when `NODE_ENV !== 'production'`.
+if (process.env.NODE_ENV !== 'production') {
+  process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+}
+
 function loadIcon() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   try {
@@ -35,6 +41,11 @@ function createWindow() {
 
   // Load the local index.html so the app runs fully offline
   win.loadFile('index.html');
+  // Auto-open DevTools during development to help debug freezes (remove in production)
+  // Only open DevTools during development (when app is not packaged)
+  if (!app.isPackaged) {
+    try { win.webContents.openDevTools({ mode: 'detach' }); } catch (e) {}
+  }
 }
 
 // IPC handler to initiate printing from renderer. Uses native print dialog
@@ -61,7 +72,7 @@ ipcMain.handle('print', async (event) => {
         const os = require('os');
         const path = require('path');
         const fs = require('fs');
-        const outPath = path.join(os.tmpdir(), `student_list_${Date.now()}.pdf`);
+        const outPath = path.join(os.tmpdir(), `recordhub_list_${Date.now()}.pdf`);
         fs.writeFileSync(outPath, pdfData);
         const openResult = await shell.openPath(outPath);
         // shell.openPath returns an empty string on success
@@ -116,7 +127,7 @@ ipcMain.handle('print-data', async (event, html) => {
       const os = require('os');
       const path = require('path');
       const fs = require('fs');
-      const outPath = path.join(os.tmpdir(), `student_list_${Date.now()}.pdf`);
+      const outPath = path.join(os.tmpdir(), `recordhub_list_${Date.now()}.pdf`);
       fs.writeFileSync(outPath, pdfData);
       const openResult = await shell.openPath(outPath);
       try { win.close(); } catch (e) {}

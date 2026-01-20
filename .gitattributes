@@ -1,0 +1,13 @@
+# Auto detect text files and normalize to LF in the repo
+* text=auto
+
+# Force CRLF conversion for Windows scripts when checked out (optional)
+*.ps1 eol=crlf
+
+# Binary files
+*.png binary
+*.ico binary
+*.exe binary
+*.zip binary
+dist_tmp/** binary
+node_modules/** -text
