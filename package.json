@@ -1,7 +1,7 @@
 {
-  "name": "data-entry-desktop",
-  "version": "1.0.0",
-  "description": "Electron wrapper for the Data Entry app",
+  "name": "recordhub-desktop",
+  "version": "1.0.1",
+  "description": "Electron wrapper for RecordHub — general-purpose record management",
   "author": "Nazir",
   "repository": {
     "type": "git",
@@ -12,14 +12,17 @@
     "start": "electron .",
     "dist": "electron-builder"
   },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
   "devDependencies": {
     "electron": "^25.0.0",
     "electron-builder": "^24.0.0",
     "png-to-ico": "^3.0.1"
   },
   "build": {
-    "appId": "com.example.dataentry",
-    "productName": "Data Entry",
+    "appId": "com.recordhub.app",
+    "productName": "RecordHub",
     "directories": {
       "output": "dist_tmp",
       "buildResources": "assets"

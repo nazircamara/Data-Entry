@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Student Registration System</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RecordHub</title>
 <!-- Removed external Google Fonts to support offline usage -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Basic Content Security Policy: adjust for your needs. Allows local resources, data/blob, and
+       permits inline styles/scripts and eval during development. Remove 'unsafe-inline'/'unsafe-eval'
+       for stricter production rules. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' data:; img-src 'self' data: blob:; connect-src 'self' http: https: ws:; font-src 'self' data:;">
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg: #0f172a;
@@ -76,9 +81,29 @@ input, select {
   border: 1px solid var(--border);
   background: #0f172a;
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   outline: none;
+  /* provide Arabic-friendly font fallbacks and comfortable line height */
+  font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans", Arial, sans-serif;
+  line-height: 1.5;
+  min-height: 44px;
+  box-sizing: border-box;
 }
+
+/* Make inputs and table cells inherit page direction (for Arabic RTL) and allow wrapping */
+input, select, textarea, td, th {
+  direction: inherit;
+  text-align: start; /* start/end respect direction */
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+}
+
+/* Allow long Arabic text to wrap inside chips and table cells and ensure vertical spacing */
+.field-chip { max-width: 100%; white-space: normal; word-break: break-word; line-height:1.4; padding:6px 14px; }
+td { white-space: normal; word-break: break-word; line-height:1.4; padding:12px 16px; }
+th { line-height:1.4; padding:12px 16px; }
+table { table-layout: auto; }
 
 /* IMPROVED GRADE MANAGER LAYOUT */
 .grade-manager {
@@ -156,20 +181,25 @@ td{ padding: 16px; border-bottom: 1px solid var(--border); }
 <div class="container">
 
 <div class="header">
-  <h2 id="title">🎓 Student Registration</h2>
-  <button onclick="toggleLang()" style="background: transparent; border: 1px solid var(--border);">🌍 Language</button>
+  <h2 id="title">📁 RecordHub</h2>
+  <div style="display:flex; gap:8px; align-items:center">
+    <label style="display:flex; align-items:center; gap:6px; font-size:14px; color:var(--text-dim)">
+      <input type="checkbox" id="timeToggle" onchange="toggleRecordTime()"> <span id="timeToggleLabel">Record Time</span>
+    </label>
+    <button onclick="toggleLang()" id="btnLang" style="background: transparent; border: 1px solid var(--border);"><span id="langBtnEmoji">🌍</span> <span id="langBtnText">Language</span></button>
+  </div>
 </div>
 
 <div class="card">
-  <h3 id="gradeTitle" style="margin-bottom:15px">📂 Current Grade / Level</h3>
+  <h3 id="gradeTitle" style="margin-bottom:15px">📂 Current Category</h3>
   <div class="grade-manager">
     <div style="display:flex; gap:8px; align-items:center;">
         <select id="gradeSelect" onchange="switchGrade()"></select>
         <button onclick="deleteGrade()" id="btnDelGrade" style="background:var(--danger); padding: 10px 12px;" title="Delete Current Grade">🗑</button>
     </div>
     <div class="input-group">
-        <input id="newGradeName" style="flex:1" placeholder="e.g. Grade 10">
-        <button onclick="addGrade()" id="btnAddGrade">＋ New Grade</button>
+        <input id="newGradeName" style="flex:1" placeholder="e.g. Category A">
+        <button type="button" onclick="addGrade()" id="btnAddGrade">＋ New Category</button>
     </div>
   </div>
 </div>
@@ -178,7 +208,13 @@ td{ padding: 16px; border-bottom: 1px solid var(--border); }
   <h3 id="setupTitle">⚙️ Form Fields</h3>
   <div style="display:flex; gap:12px; margin-top:15px">
     <input id="newField" style="flex:1" placeholder="Add a field">
-    <button id="addFieldBtn" onclick="addField()">Add</button>
+    <select id="newFieldType" style="width:160px; border-radius:8px;">
+      <option value="text">Text</option>
+      <option value="number">Number</option>
+      <option value="date">Date</option>
+      <option value="textarea">Textarea</option>
+    </select>
+    <button type="button" id="addFieldBtn" onclick="addField()">Add</button>
   </div>
   <div id="fieldList"></div>
 </div>
@@ -188,10 +224,11 @@ td{ padding: 16px; border-bottom: 1px solid var(--border); }
 </div>
 
 <div class="card">
-  <h3 id="recordsTitle" style="margin-bottom:15px">📋 Registered Students</h3>
+  <h3 id="recordsTitle" style="margin-bottom:15px">📋 Registered Records</h3>
   
-  <input type="text" id="searchInput" class="search-input" onkeyup="searchRecords()" 
-         placeholder="🔍 Search entries..." style="width:100%; margin-bottom:15px; border-width: 2px;">
+    <input type="text" id="exportTitle" placeholder="Report title (appears in Excel)" style="width:100%; margin-bottom:8px; padding:10px; border-width:2px;" />
+    <input type="text" id="searchInput" class="search-input" onkeyup="searchRecords()" 
+      placeholder="🔍 Search entries..." style="width:100%; margin-bottom:15px; border-width: 2px;">
 
   <div class="table-controls">
     <button id="btnExport" onclick="exportCSV()" style="background:#475569">📄 Excel</button>
@@ -208,19 +245,146 @@ td{ padding: 16px; border-bottom: 1px solid var(--border); }
 
 </div>
 
+<div id="busyOverlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter: blur(2px);background:rgba(0,0,0,0.35);z-index:9999;color:#fff;font-size:16px;">Working…</div>
+<div id="statusBar" style="position:fixed;left:12px;right:12px;bottom:12px;background:rgba(0,0,0,0.6);color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;display:none;z-index:10000;">Status</div>
+
 <script>
 /* GLOBAL STATE */
 let lang = localStorage.getItem("lang") || "en";
-let grades = JSON.parse(localStorage.getItem("grades")) || ["Grade 1"];
-let currentGrade = localStorage.getItem("currentGrade") || "Grade 1";
+let grades = JSON.parse(localStorage.getItem("grades")) || ["Category 1"];
+let currentGrade = localStorage.getItem("currentGrade") || "Category 1";
+let recordTime = JSON.parse(localStorage.getItem("recordTime")) || false;
+let exportTitle = localStorage.getItem("exportTitle") || "";
 
 if (!grades.includes(currentGrade)) {
     currentGrade = grades[0];
     localStorage.setItem("currentGrade", currentGrade);
 }
 
-let fields = JSON.parse(localStorage.getItem(`fields_${currentGrade}`)) || ["Full Name","Email"];
-let data = JSON.parse(localStorage.getItem(`data_${currentGrade}`)) || [];
+// fields are stored as objects: { label: string, type: string }
+function normalizeFields(raw) {
+  if (!raw) return [];
+  return raw.map(f => {
+    if (!f) return null;
+    if (typeof f === 'string') return { label: f, type: 'text' };
+    if (typeof f === 'object' && f.label) return { label: f.label, type: f.type || 'text' };
+    return null;
+  }).filter(Boolean);
+}
+
+let fields = normalizeFields(JSON.parse(localStorage.getItem(`fields_${currentGrade}`))) || [];
+// `data` is an array of { id: <dbId>, values: [...], time: "" }
+let data = [];
+
+// IndexedDB wrapper (async, non-blocking persistence)
+const IDB_NAME = 'recordhub';
+const IDB_VERSION = 1;
+let __idb = null;
+function openIDB(){
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) return resolve(null);
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'key' });
+      if (!db.objectStoreNames.contains('rows')) db.createObjectStore('rows', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = e => { __idb = e.target.result; resolve(__idb); };
+    req.onerror = e => { console.warn('IDB open error', e); resolve(null); };
+  });
+}
+
+function idbGetKV(key){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve(null);
+    const tx = __idb.transaction('kv', 'readonly');
+    const store = tx.objectStore('kv');
+    const rq = store.get(key);
+    rq.onsuccess = () => resolve(rq.result ? rq.result.value : null);
+    rq.onerror = () => resolve(null);
+  });
+}
+function idbSetKV(key, value){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve(false);
+    const tx = __idb.transaction('kv', 'readwrite');
+    const store = tx.objectStore('kv');
+    store.put({ key, value });
+    tx.oncomplete = () => resolve(true);
+    tx.onabort = tx.onerror = () => resolve(false);
+  });
+}
+function idbRemoveKV(key){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve(false);
+    const tx = __idb.transaction('kv', 'readwrite');
+    const store = tx.objectStore('kv');
+    const rq = store.delete(key);
+    rq.onsuccess = () => resolve(true);
+    rq.onerror = () => resolve(false);
+  });
+}
+
+function addRowToDB(grade, row){
+  return new Promise((resolve, reject) => {
+    if (!__idb) return resolve(null);
+    const tx = __idb.transaction('rows', 'readwrite');
+    const store = tx.objectStore('rows');
+    const item = Object.assign({ grade }, row);
+    const rq = store.add(item);
+    rq.onsuccess = () => resolve(rq.result);
+    rq.onerror = () => { console.warn('addRowToDB error', rq.error); resolve(null); };
+  });
+}
+
+function updateRowInDB(id, row){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve(false);
+    const tx = __idb.transaction('rows', 'readwrite');
+    const store = tx.objectStore('rows');
+    const rq = store.put(Object.assign({ id }, row));
+    rq.onsuccess = () => resolve(true);
+    rq.onerror = () => { console.warn('updateRowInDB error', rq.error); resolve(false); };
+  });
+}
+
+function getRowsForGrade(grade){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve([]);
+    const tx = __idb.transaction('rows', 'readonly');
+    const store = tx.objectStore('rows');
+    const out = [];
+    store.openCursor().onsuccess = function(e){
+      const cursor = e.target.result;
+      if (!cursor) { resolve(out); return; }
+      const v = cursor.value;
+      if (v.grade === grade) out.push({ id: v.id, values: v.values, time: v.time });
+      cursor.continue();
+    };
+  });
+}
+
+function clearRowsForGrade(grade){
+  return new Promise((resolve) => {
+    if (!__idb) return resolve(false);
+    const tx = __idb.transaction('rows', 'readwrite');
+    const store = tx.objectStore('rows');
+    const toDelete = [];
+    store.openCursor().onsuccess = function(e){
+      const cursor = e.target.result;
+      if (!cursor) {
+        // delete collected keys
+        if (toDelete.length === 0) return resolve(true);
+        let cnt = 0;
+        toDelete.forEach(k => { const r = store.delete(k); r.onsuccess = () => { cnt++; if (cnt === toDelete.length) resolve(true); }; r.onerror = () => { cnt++; if (cnt === toDelete.length) resolve(false); }; });
+        return;
+      }
+      const v = cursor.value;
+      if (v.grade === grade) toDelete.push(v.id);
+      cursor.continue();
+    };
+  });
+}
 
 const form = document.getElementById("form");
 const thead = document.getElementById("thead");
@@ -228,77 +392,160 @@ const tbody = document.getElementById("tbody");
 
 const i18n = {
   en: {
-    title: "🎓 Student Registration",
-    gradeTitle: "📂 Current Grade / Level",
+    title: "📁 RecordHub",
+    gradeTitle: "📂 Current Category",
     setup: "⚙️ Form Fields",
-    records: "📋 Registered Students",
+    records: "📋 Registered Records",
     addField: "Add",
-    newGrade: "＋ New Grade",
+    newGrade: "＋ New Category",
+    language: "Language",
     print: "🖨 Print",
     export: "📄 Excel",
     clear: "🗑 Clear Grade",
-    placeholderGrade: "e.g. Grade 10",
+    exportTitlePlaceholder: "Report title (appears in Excel)",
+    timeToggleLabel: "Record Time",
+    language: "English",
+    deleteCurrentGradeTitle: "Delete Current Category",
+    mustHaveOne: "You must have at least one category.",
+    placeholderGrade: "e.g. Category A",
     placeholderField: "Add a field",
     register: "Complete Registration",
     confirmClear: "Delete all records for this grade?",
     confirmDeleteField: "Delete this field?",
     confirmDeleteGrade: "Delete the ENTIRE grade and all its students? This cannot be undone.",
     searchPlaceholder: "🔍 Search entries...",
-    time: "Time"
+    time: "Time",
+    type_text: "Text",
+    type_number: "Number",
+    type_date: "Date",
+    type_textarea: "Textarea"
   },
   ar: {
-    title: "🎓 تسجيل الطلاب",
-    gradeTitle: "📂 المرحلة / الصف الحالي",
+    title: "📁 RecordHub",
+    gradeTitle: "📂 المرحلة / الفئة الحالية",
     setup: "⚙️ حقول النموذج",
-    records: "📋 الطلاب المسجلين",
+    records: "📋 السجلات المسجلة",
     addField: "إضافة",
-    newGrade: "صف جديد ＋",
+    newGrade: "فئة جديدة ＋",
     print: "🖨 طباعة",
     export: "📄 إكسل",
+    language: "العربية",
     clear: "🗑 مسح الصف",
+    exportTitlePlaceholder: "عنوان التقرير (يظهر في الإكسل)",
+    timeToggleLabel: "تسجيل الوقت",
+    deleteCurrentGradeTitle: "حذف الفئة الحالية",
     placeholderGrade: "مثلاً: الصف 10",
     placeholderField: "إضافة حقل",
     register: "إتمام التسجيل",
     confirmClear: "مسح جميع السجلات لهذا الصف؟",
+    mustHaveOne: "يجب أن يكون لديك فئة واحدة على الأقل.",
     confirmDeleteField: "حذف هذا الحقل؟",
     confirmDeleteGrade: "هل تريد حذف هذا الصف بالكامل مع جميع طلابه؟ لا يمكن التراجع عن هذا الإجراء.",
     searchPlaceholder: "🔍 بحث...",
-    time: "Time"
+    time: "Time",
+    type_text: "نص",
+    type_number: "رقم",
+    type_date: "تاريخ",
+    type_textarea: "نص طويل"
   }
 };
 
+function getTypeLabel(type) {
+  const t = i18n[lang] || i18n.en;
+  return t[`type_${type}`] || type;
+}
+
 /* GRADE MANAGEMENT */
+function applyLang(){
+  const t = i18n[lang];
+  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  const titleEl = document.getElementById("title"); if (titleEl) titleEl.innerText = t.title;
+  const gradeTitleEl = document.getElementById("gradeTitle"); if (gradeTitleEl) gradeTitleEl.innerText = t.gradeTitle;
+  const setupEl = document.getElementById("setupTitle"); if (setupEl) setupEl.innerText = t.setup;
+  const recordsEl = document.getElementById("recordsTitle"); if (recordsEl) recordsEl.innerText = t.records;
+  const addFieldBtn = document.getElementById("addFieldBtn"); if (addFieldBtn) addFieldBtn.innerText = t.addField;
+  const btnAddGrade = document.getElementById("btnAddGrade"); if (btnAddGrade) btnAddGrade.innerText = t.newGrade;
+  const newGradeName = document.getElementById("newGradeName"); if (newGradeName) newGradeName.placeholder = t.placeholderGrade;
+  const newField = document.getElementById("newField"); if (newField) newField.placeholder = t.placeholderField;
+  const timeLabelEl = document.getElementById("timeToggleLabel"); if (timeLabelEl) timeLabelEl.innerText = t.timeToggleLabel || "";
+  const langBtnTextEl = document.getElementById("langBtnText"); if (langBtnTextEl) langBtnTextEl.innerText = t.language || "";
+  const exportTitleEl = document.getElementById("exportTitle"); if (exportTitleEl) exportTitleEl.placeholder = t.exportTitlePlaceholder || "";
+  const btnDelGradeEl = document.getElementById("btnDelGrade"); if (btnDelGradeEl) btnDelGradeEl.title = t.deleteCurrentGradeTitle || "";
+  const btnPrintEl = document.getElementById("btnPrint"); if (btnPrintEl) btnPrintEl.innerText = t.print || btnPrintEl.innerText;
+  const searchEl = document.getElementById("searchInput"); if (searchEl) searchEl.placeholder = t.searchPlaceholder || searchEl.placeholder;
+  const btnExport = document.getElementById("btnExport"); if (btnExport) btnExport.innerText = t.export || btnExport.innerText;
+  const btnClear = document.getElementById("btnClear"); if (btnClear) btnClear.innerText = t.clear || btnClear.innerText;
+  const timeToggleEl = document.getElementById("timeToggle"); if (timeToggleEl) timeToggleEl.checked = !!recordTime;
+  if (exportTitleEl) exportTitleEl.value = exportTitle || "";
+  // populate field-type dropdown with localized labels
+  const typeSelect = document.getElementById('newFieldType');
+  if (typeSelect) {
+    const opts = [
+      { value: 'text', label: t.type_text || 'Text' },
+      { value: 'number', label: t.type_number || 'Number' },
+      { value: 'date', label: t.type_date || 'Date' },
+      { value: 'textarea', label: t.type_textarea || 'Textarea' }
+    ];
+    const cur = typeSelect.value;
+    typeSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+    if (cur) typeSelect.value = cur;
+  }
+  // update the form submit button text if present
+  const submitBtn = document.querySelector('#form .primary');
+  if (submitBtn) submitBtn.innerText = t.register || i18n.en.register;
+}
 function updateGradeDropdown() {
   const select = document.getElementById("gradeSelect");
   select.innerHTML = grades.map(g => `<option value="${g}" ${g === currentGrade ? 'selected' : ''}>${g}</option>`).join("");
 }
 
-function addGrade() {
+async function addGrade() {
   const name = document.getElementById("newGradeName").value.trim();
   if(!name || grades.includes(name)) return;
   grades.push(name);
+  // persist to localStorage (fallback) and to IDB if available
   localStorage.setItem("grades", JSON.stringify(grades));
   currentGrade = name;
   localStorage.setItem("currentGrade", currentGrade);
-  location.reload();
+  if (__idb) await idbSetKV('grades', grades);
+  if (__idb) await idbSetKV('currentGrade', currentGrade);
+  // initialize data/fields for the new category (start empty by default)
+  fields = normalizeFields(JSON.parse(localStorage.getItem(`fields_${currentGrade}`))) || [];
+  data = JSON.parse(localStorage.getItem(`data_${currentGrade}`)) || [];
+  // refresh UI
+  init();
 }
 
 function switchGrade() {
-  currentGrade = document.getElementById("gradeSelect").value;
-  localStorage.setItem("currentGrade", currentGrade);
-  location.reload();
+  (async function(){
+    currentGrade = document.getElementById("gradeSelect").value;
+    if (__idb) await idbSetKV('currentGrade', currentGrade);
+    else localStorage.setItem("currentGrade", currentGrade);
+    const storedFields = __idb ? await idbGetKV(`fields_${currentGrade}`) : JSON.parse(localStorage.getItem(`fields_${currentGrade}`));
+    fields = normalizeFields(storedFields) || [];
+    data = await getRowsForGrade(currentGrade) || [];
+    applyLang();
+    updateGradeDropdown();
+    renderFieldList();
+    renderForm();
+    renderTable();
+    refreshAllRows();
+  })();
 }
 
-function deleteGrade() {
-    if (grades.length <= 1) return alert("You must have at least one grade.");
+async function deleteGrade() {
+  if (grades.length <= 1) { setStatus(i18n[lang].mustHaveOne); return; }
     if (confirm(i18n[lang].confirmDeleteGrade)) {
-        localStorage.removeItem(`fields_${currentGrade}`);
-        localStorage.removeItem(`data_${currentGrade}`);
-        grades = grades.filter(g => g !== currentGrade);
-        localStorage.setItem("grades", JSON.stringify(grades));
-        currentGrade = grades[0];
-        localStorage.setItem("currentGrade", currentGrade);
-        location.reload();
+    // remove records for the grade from IDB and remove fields
+    await clearRowsForGrade(currentGrade);
+    if (__idb) await idbRemoveKV(`fields_${currentGrade}`);
+    grades = grades.filter(g => g !== currentGrade);
+    if (__idb) await idbSetKV('grades', grades);
+  currentGrade = grades[0];
+  if (__idb) await idbSetKV('currentGrade', currentGrade);
+  fields = normalizeFields(JSON.parse(localStorage.getItem(`fields_${currentGrade}`))) || [];
+  data = [];
+  init();
     }
 }
 
@@ -312,7 +559,27 @@ function getEnglishTimestamp() {
   return `${day}/${month}/${year} ${h}:${m}`;
 }
 
-function init() {
+async function init() {
+  await openIDB();
+  // load saved language preference from IDB if present
+  const storedLang = await idbGetKV('lang');
+  if (storedLang) lang = storedLang;
+  // Load persisted state from IDB when available (fallback to localStorage)
+  const storedGrades = await idbGetKV('grades');
+  if (storedGrades) grades = storedGrades;
+  const storedCurrent = await idbGetKV('currentGrade');
+  if (storedCurrent) currentGrade = storedCurrent;
+  const storedRecordTime = await idbGetKV('recordTime');
+  if (typeof storedRecordTime === 'boolean') recordTime = storedRecordTime;
+  const storedExportTitle = await idbGetKV('exportTitle');
+  if (storedExportTitle) exportTitle = storedExportTitle;
+  const storedFields = await idbGetKV(`fields_${currentGrade}`);
+  if (storedFields) fields = normalizeFields(storedFields) || [];
+
+  // load rows for current grade
+  const rows = await getRowsForGrade(currentGrade);
+  data = rows || [];
+
   applyLang();
   updateGradeDropdown();
   renderFieldList();
@@ -321,41 +588,155 @@ function init() {
   refreshAllRows();
 }
 
+// Toggle language and persist preference
+function toggleLang(){
+  lang = lang === 'en' ? 'ar' : 'en';
+  if (__idb) idbSetKV('lang', lang);
+  else localStorage.setItem('lang', lang);
+  applyLang();
+}
+
 function renderFieldList() {
   const list = document.getElementById("fieldList");
   list.innerHTML = "";
   fields.forEach((f, index) => {
     const chip = document.createElement("div");
     chip.className = "field-chip";
-    chip.innerHTML = `${f} <span onclick="deleteField(${index})">&times;</span>`;
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = f.label;
+    const typeSpan = document.createElement('span');
+    typeSpan.style.opacity = '.6';
+    typeSpan.style.fontSize = '12px';
+    typeSpan.style.marginLeft = '8px';
+    typeSpan.textContent = `(${getTypeLabel(f.type)})`;
+    const delSpan = document.createElement('span');
+    delSpan.style.cursor = 'pointer';
+    delSpan.style.color = 'var(--danger)';
+    delSpan.style.marginLeft = '8px';
+    delSpan.innerHTML = '&times;';
+    delSpan.addEventListener('click', () => deleteField(index));
+    chip.appendChild(labelSpan);
+    chip.appendChild(typeSpan);
+    chip.appendChild(delSpan);
     list.appendChild(chip);
   });
 }
 
-function addField(){
+async function addField(){
   const input = document.getElementById("newField");
   if(!input.value) return;
-  fields.push(input.value);
-  data.forEach(row => row.values.push(""));
-  save();
-  input.value="";
-  init();
+  const value = input.value;
+  if (!value) return;
+  const typeEl = document.getElementById('newFieldType');
+  const type = typeEl ? typeEl.value : 'text';
+  fields.push({ label: value, type });
+  input.value = "";
+  // persist immediately to localStorage and IDB (if available)
+  localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields));
+  if (__idb) await idbSetKV(`fields_${currentGrade}`, fields);
+  // Add empty slot to each row in chunks to avoid blocking
+  if (data.length === 0) {
+    saveImmediate();
+    init();
+    return;
+  }
+  showBusy('Adding field to records...');
+  const total = data.length;
+  let idx = 0;
+  const chunk = 500;
+  function addChunk() {
+    (async function(){
+      for (let i = 0; i < chunk && idx < total; i++, idx++) {
+        // push empty default value (checkbox -> '', others -> '')
+        data[idx].values.push("");
+        if (data[idx].id) await updateRowInDB(data[idx].id, data[idx]);
+        else {
+          const newId = await addRowToDB(currentGrade, data[idx]);
+          if (newId) data[idx].id = newId;
+        }
+      }
+      if (idx < total) setTimeout(addChunk, 0);
+      else {
+        // ensure metadata persists to both stores
+        localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields));
+        if (__idb) await idbSetKV(`fields_${currentGrade}`, fields);
+        hideBusy();
+        init();
+      }
+    })();
+  }
+  addChunk();
 }
 
 function deleteField(index) {
-  if(confirm(i18n[lang].confirmDeleteField)) {
-    fields.splice(index, 1);
-    data.forEach(row => row.values.splice(index, 1));
-    save();
-    init();
+  if (!confirm(i18n[lang].confirmDeleteField)) return;
+  // Remove the field descriptor first
+  fields.splice(index, 1);
+  // persist field metadata immediately
+  try { localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields)); } catch(e){}
+  if (__idb) idbSetKV(`fields_${currentGrade}`, fields);
+  // Process row value removals in chunks to avoid UI freeze
+  if (data.length === 0) { saveImmediate(); init(); return; }
+  showBusy('Removing field from records...');
+  const total = data.length;
+  let idx = 0;
+  const chunk = 500;
+  function removeChunk() {
+    (async function(){
+      for (let i = 0; i < chunk && idx < total; i++, idx++) {
+        if (data[idx] && Array.isArray(data[idx].values)) {
+          data[idx].values.splice(index, 1);
+          if (data[idx].id) await updateRowInDB(data[idx].id, data[idx]);
+          else {
+            const newId = await addRowToDB(currentGrade, data[idx]);
+            if (newId) data[idx].id = newId;
+          }
+        }
+      }
+      if (idx < total) setTimeout(removeChunk, 0);
+      else {
+        // ensure fields metadata persisted to both stores
+        try { localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields)); } catch(e){}
+        if (__idb) await idbSetKV(`fields_${currentGrade}`, fields);
+        hideBusy();
+        init();
+      }
+    })();
   }
+  removeChunk();
 }
 
 function renderForm(){
   form.innerHTML="";
   fields.forEach(f=>{
+    if (!f) return;
+    if (f.type === 'textarea') {
+      const ta = document.createElement('textarea');
+      ta.placeholder = f.label;
+      ta.required = true;
+      ta.style.minHeight = '72px';
+      form.appendChild(ta);
+      return;
+    }
+    if (f.type === 'checkbox') {
+      const wrapper = document.createElement('label');
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.gap = '8px';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.title = f.label;
+      cb.style.width = '18px';
+      wrapper.appendChild(cb);
+      const span = document.createElement('span');
+      span.innerText = f.label;
+      wrapper.appendChild(span);
+      form.appendChild(wrapper);
+      return;
+    }
     const input = document.createElement("input");
-    input.placeholder = f;
+    input.type = (['text','number','date'].includes(f.type) ? f.type : 'text');
+    input.placeholder = f.label;
     input.required = true;
     form.appendChild(input);
   });
@@ -365,38 +746,115 @@ function renderForm(){
   form.appendChild(btn);
 }
 
-form.onsubmit = e => {
+form.onsubmit = async e => {
   e.preventDefault();
-  const values = [...form.querySelectorAll("input")].map(i => i.value);
-  data.push({ values, time: getEnglishTimestamp() });
+  const els = [...form.querySelectorAll("input, textarea, select")];
+  const values = els.map(i => {
+    if (i.type === 'checkbox') return i.checked ? '1' : '';
+    return i.value || '';
+  });
+  const row = { values, time: recordTime ? getEnglishTimestamp() : "" };
+  // Persist row to IDB and update in-memory list
+  const id = await addRowToDB(currentGrade, row);
+  row.id = id;
+  data.push(row);
+  addRow(row, data.length - 1);
+  // Persist metadata (fields/grades) shortly
   save();
-  addRow(data[data.length-1], data.length-1);
   form.reset();
 };
 
 function renderTable(){
-  thead.innerHTML=`<th>#</th>` + 
-                  fields.map(f=>`<th>${f}</th>`).join("") + 
-                  `<th>${i18n[lang].time}</th>`;
+  thead.innerHTML = `<th>#</th>` + fields.map(f => `<th>${f.label}</th>`).join("") + (recordTime ? `<th>${i18n[lang].time}</th>` : "");
   tbody.innerHTML="";
 }
 
 function addRow(row, index){
   const tr = tbody.insertRow();
-  tr.innerHTML = `<td>${index + 1}</td>`;
+  const idxTd = document.createElement("td");
+  idxTd.innerText = index + 1;
+  tr.appendChild(idxTd);
   row.values.forEach((v, vIdx) => {
     const td = document.createElement("td");
-    td.contentEditable = true;
-    td.innerText = v;
-    td.oninput = () => { data[index].values[vIdx] = td.innerText; save(); };
+    const f = fields[vIdx];
+    if (f && f.type === 'checkbox') {
+      td.contentEditable = false;
+      td.innerText = v ? '✓' : '';
+    } else {
+      td.contentEditable = true;
+      td.innerText = v;
+      td.oninput = async () => {
+        // update in-memory and persist only this row
+        data[index].values[vIdx] = td.innerText;
+        save();
+        if (data[index].id) await updateRowInDB(data[index].id, data[index]);
+      };
+    }
     tr.appendChild(td);
   });
-  tr.innerHTML += `<td>${row.time}</td>`;
+  if (recordTime) {
+    const timeTd = document.createElement("td");
+    timeTd.innerText = row.time || "";
+    tr.appendChild(timeTd);
+  }
 }
 
 function refreshAllRows() {
+  // Chunked rendering for large datasets to avoid blocking the UI.
   tbody.innerHTML = "";
-  data.forEach((row, index) => addRow(row, index));
+  const total = data.length;
+  const chunkSize = total > 1000 ? 200 : 200; // keep chunk size moderate
+  let idx = 0;
+
+  function showBusy(msg) {
+    const el = document.getElementById('busyOverlay');
+    if (el) { el.innerText = msg || 'Working…'; el.style.display = 'flex'; }
+  }
+  function hideBusy() { const el = document.getElementById('busyOverlay'); if (el) el.style.display = 'none'; }
+
+  if (total === 0) { hideBusy(); return; }
+  showBusy('Rendering records...');
+
+  function renderChunk() {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < chunkSize && idx < total; i++, idx++) {
+      const row = data[idx];
+      const tr = document.createElement('tr');
+      const idxTd = document.createElement('td');
+      idxTd.innerText = idx + 1;
+      tr.appendChild(idxTd);
+      row.values.forEach((v, vIdx) => {
+        const td = document.createElement('td');
+        const f = fields[vIdx];
+        if (f && f.type === 'checkbox') {
+          td.contentEditable = false;
+          td.innerText = v ? '✓' : '';
+        } else {
+          td.contentEditable = true;
+          td.innerText = v;
+          // capture the row index for the handler
+          const rIndex = idx;
+          td.oninput = () => { data[rIndex].values[vIdx] = td.innerText; save(); };
+        }
+        tr.appendChild(td);
+      });
+      if (recordTime) {
+        const timeTd = document.createElement('td');
+        timeTd.innerText = row.time || "";
+        tr.appendChild(timeTd);
+      }
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+    if (idx < total) {
+      // yield to the event loop so the UI remains responsive
+      setTimeout(renderChunk, 0);
+    } else {
+      hideBusy();
+    }
+  }
+
+  renderChunk();
 }
 
 function searchRecords() {
@@ -406,53 +864,95 @@ function searchRecords() {
     }
 }
 
-function save(){ 
-  localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields));
-  localStorage.setItem(`data_${currentGrade}`, JSON.stringify(data));
+// Debounced save to avoid blocking main thread when data is large.
+let __saveTimer = null;
+let __saveScheduled = false;
+function showBusy(msg) { const el = document.getElementById('busyOverlay'); if (el) { el.innerText = msg || 'Working…'; el.style.display = 'flex'; } }
+function hideBusy() { const el = document.getElementById('busyOverlay'); if (el) el.style.display = 'none'; }
+function setStatus(msg, ms){
+  const s = document.getElementById('statusBar');
+  if (!s) return;
+  s.innerText = msg + (ms ? ` (${ms} ms)` : '');
+  s.style.display = 'block';
+  clearTimeout(s._t);
+  s._t = setTimeout(()=>{ s.style.display = 'none'; }, 5000);
 }
 
-function exportCSV(){
-  let csv = "\uFEFF" + fields.join(",") + ",Time\n";
-  data.forEach(row => {
-    csv += row.values.map(v => `"${v}"`).join(",") + `,"${row.time}"\n`;
-  });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8;"}));
-  a.download = `${currentGrade}_list.csv`;
-  a.click();
-}
-
-function clearData(){
-  if(confirm(i18n[lang].confirmClear)){
-    data = [];
-    save();
-    refreshAllRows();
+function saveImmediate() {
+  try {
+    const t0 = performance.now();
+    showBusy('Saving...');
+    localStorage.setItem(`fields_${currentGrade}`, JSON.stringify(fields));
+    localStorage.setItem(`data_${currentGrade}`, JSON.stringify(data));
+    localStorage.setItem("grades", JSON.stringify(grades));
+    localStorage.setItem("currentGrade", currentGrade);
+    localStorage.setItem("recordTime", JSON.stringify(recordTime));
+    const titleEl = document.getElementById("exportTitle");
+    if (titleEl) {
+      exportTitle = titleEl.value || "";
+      localStorage.setItem("exportTitle", exportTitle);
+    }
+    const t1 = performance.now();
+    const dur = Math.round(t1 - t0);
+    console.info('saveImmediate duration', dur, 'ms', 'items:', fields.length, data.length);
+    hideBusy();
+    setStatus('Saved', dur);
+  } catch (e) {
+    console.warn('Save failed:', e);
   }
 }
 
-function toggleLang(){
-  lang = lang === "en" ? "ar" : "en";
-  localStorage.setItem("lang", lang);
-  applyLang();
+function save(){
+  // Schedule a periodic save to avoid frequent blocking; only one timer runs.
+  if (__saveTimer) return; // already scheduled
+  __saveTimer = setTimeout(() => { saveImmediate(); __saveTimer = null; __saveScheduled = false; }, 3000);
+  __saveScheduled = true;
 }
 
-function applyLang(){
-  const t = i18n[lang];
-  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  document.getElementById("title").innerText = t.title;
-  document.getElementById("gradeTitle").innerText = t.gradeTitle;
-  document.getElementById("setupTitle").innerText = t.setup;
-  document.getElementById("recordsTitle").innerText = t.records;
-  document.getElementById("addFieldBtn").innerText = t.addField;
-  document.getElementById("btnAddGrade").innerText = t.newGrade;
-  document.getElementById("newGradeName").placeholder = t.placeholderGrade;
-  document.getElementById("newField").placeholder = t.placeholderField;
-  const btnPrintEl = document.getElementById("btnPrint");
-  if (btnPrintEl) btnPrintEl.innerText = t.print;
-  document.getElementById("btnExport").innerText = t.export;
-  document.getElementById("btnClear").innerText = t.clear;
-  document.getElementById("searchInput").placeholder = t.searchPlaceholder;
-  renderForm();
+function exportCSV(){
+  // Ensure recent changes are flushed before exporting
+  saveImmediate();
+  const title = localStorage.getItem("exportTitle") || document.getElementById("exportTitle")?.value || "";
+  const includeTime = !!recordTime;
+
+  // Build an array-of-arrays for the worksheet
+  const aoa = [];
+  if (title) { aoa.push([title]); aoa.push([]); }
+  const header = fields.map(f => (f && f.label) ? f.label : (f || ''));
+  if (includeTime) header.push(i18n[lang].time || 'Time');
+  aoa.push(header);
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const r = row.values.map(v => v == null ? '' : v);
+    if (includeTime) r.push(row.time || '');
+    aoa.push(r);
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${currentGrade}_list.xlsx`;
+  a.click();
+}
+
+async function clearData(){
+  if(confirm(i18n[lang].confirmClear)){
+  // Clear rows for current grade from IDB and memory
+  await clearRowsForGrade(currentGrade);
+  data = [];
+  saveImmediate();
+  refreshAllRows();
+  }
+  
+}
+
+function toggleRecordTime(){
+  recordTime = !!document.getElementById("timeToggle").checked;
+  localStorage.setItem("recordTime", JSON.stringify(recordTime));
   renderTable();
   refreshAllRows();
 }
