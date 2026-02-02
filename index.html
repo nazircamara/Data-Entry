@@ -909,7 +909,7 @@ function save(){
   __saveScheduled = true;
 }
 
-function exportCSV(){
+async function exportCSV(){
   // Ensure recent changes are flushed before exporting
   saveImmediate();
   const title = localStorage.getItem("exportTitle") || document.getElementById("exportTitle")?.value || "";
@@ -932,6 +932,22 @@ function exportCSV(){
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+  // If running inside Electron and preload exposes `api.saveFile`, use native Save dialog
+  try {
+    if (window.api && typeof window.api.saveFile === 'function') {
+      const arrBuffer = wbout.buffer ? wbout.buffer : (wbout instanceof ArrayBuffer ? wbout : (new Uint8Array(wbout)).buffer);
+      const res = await window.api.saveFile(arrBuffer, `${currentGrade}_list.xlsx`);
+      if (res && !res.canceled) setStatus('Saved to ' + res.path);
+      else if (res && res.canceled) setStatus('Save cancelled');
+      else setStatus('Save failed');
+      return;
+    }
+  } catch (e) {
+    console.warn('Native save failed, falling back to browser download:', e);
+  }
+
+  // Fallback for browser (or when native save not available)
   const blob = new Blob([wbout], { type: 'application/octet-stream' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

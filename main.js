@@ -142,6 +142,36 @@ ipcMain.handle('print-data', async (event, html) => {
   }
 });
 
+// Save arbitrary binary file (e.g., generated XLSX) from renderer.
+ipcMain.handle('save-file', async (event, { data, filename }) => {
+  try {
+    const { dialog, BrowserWindow } = require('electron');
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const res = await dialog.showSaveDialog(win, {
+      defaultPath: filename || 'export.xlsx',
+      filters: [ { name: 'Excel', extensions: ['xlsx'] }, { name: 'All Files', extensions: ['*'] } ]
+    });
+    if (res.canceled) return { canceled: true };
+    const outPath = res.filePath;
+    // `data` may be an ArrayBuffer or a Uint8Array; convert to Buffer
+    let buf;
+    if (data && data.buffer && data.byteLength !== undefined) {
+      // Uint8Array or similar
+      buf = Buffer.from(data);
+    } else if (data && data instanceof ArrayBuffer) {
+      buf = Buffer.from(new Uint8Array(data));
+    } else {
+      // Fallback: try to coerce
+      buf = Buffer.from(data);
+    }
+    const fs = require('fs');
+    fs.writeFileSync(outPath, buf);
+    return { canceled: false, path: outPath };
+  } catch (err) {
+    return { canceled: true, error: String(err) };
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
